@@ -1,0 +1,163 @@
+:root {
+  --bg: #f4f1ea;
+  --card: #fffdf8;
+  --ink: #1f2933;
+  --muted: #52606d;
+  --accent: #c05621;
+  --accent-2: #2f855a;
+  --line: #e9dccb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 10% 10%, #fce3c5 0%, transparent 30%),
+    radial-gradient(circle at 90% 0%, #d9f3df 0%, transparent 32%),
+    var(--bg);
+}
+
+.page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.hero {
+  margin-bottom: 16px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #1f2933;
+  color: #fff;
+  font-size: 12px;
+  margin: 0;
+}
+
+h1 {
+  margin: 12px 0 8px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  margin-top: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+textarea {
+  width: 100%;
+  min-height: 180px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  resize: vertical;
+  font: inherit;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+button {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #fff;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+button:last-of-type {
+  background: var(--accent-2);
+}
+
+.scores {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.scores article {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.scores p {
+  margin: 8px 0 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.status {
+  min-height: 20px;
+  margin-top: 10px;
+  color: var(--muted);
+}
+
+.file-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.file-group label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 0;
+}
+
+.file-name {
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.formats-hint {
+  width: 100%;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 2px 0 0;
+}
+
+@media (max-width: 800px) {
+  .grid,
+  .scores {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comparador de Similaridade Textual</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <p class="badge">TCC Engenharia de Software</p>
+      <h1>Comparador de Similaridade de Textos</h1>
+      <p class="subtitle">TF-IDF + Cosseno, Jaccard e Levenshtein em uma interface unica.</p>
+    </header>
+
+    <section class="card grid">
+      <div>
+        <label for="text-a">Texto A</label>
+        <textarea id="text-a" placeholder="Cole o primeiro texto"></textarea>
+      </div>
+      <div>
+        <label for="text-b">Texto B</label>
+        <textarea id="text-b" placeholder="Cole o segundo texto"></textarea>
+      </div>
+    </section>
+
+    <section class="card actions">
+      <button id="compare-btn" type="button">Comparar textos</button>
+      <span>ou</span>
+      <div class="file-group">
+        <label for="file-a">Arquivo A</label>
+        <input id="file-a" type="file" accept=".txt,.pdf,.docx,.doc,.odt,.rtf,.csv,.md,.html,.htm">
+        <span id="file-a-name" class="file-name">nenhum arquivo</span>
+      </div>
+      <div class="file-group">
+        <label for="file-b">Arquivo B</label>
+        <input id="file-b" type="file" accept=".txt,.pdf,.docx,.doc,.odt,.rtf,.csv,.md,.html,.htm">
+        <span id="file-b-name" class="file-name">nenhum arquivo</span>
+      </div>
+      <button id="compare-files-btn" type="button">Comparar arquivos</button>
+      <p class="formats-hint">Formatos: TXT · PDF · DOCX · DOC · ODT · RTF · CSV · MD · HTML</p>
+    </section>
+
+    <section class="card results">
+      <h2>Resultados</h2>
+      <div class="scores">
+        <article>
+          <h3>TF-IDF + Cosseno</h3>
+          <p id="score-tfidf">-</p>
+        </article>
+        <article>
+          <h3>Jaccard</h3>
+          <p id="score-jaccard">-</p>
+        </article>
+        <article>
+          <h3>Levenshtein</h3>
+          <p id="score-levenshtein">-</p>
+        </article>
+      </div>
+      <p id="status" class="status"></p>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

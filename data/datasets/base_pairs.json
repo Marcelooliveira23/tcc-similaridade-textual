@@ -1,0 +1,187 @@
+{
+  "description": "Dataset base para avaliacao inicial dos algoritmos de similaridade textual do TCC",
+  "pairs": [
+    {
+      "id": 1,
+      "text_a": "A deteccao de plagio em trabalhos academicos exige analise de similaridade textual.",
+      "text_b": "A identificacao de plagio em trabalhos universitarios depende de analise de similaridade de textos.",
+      "is_similar": true,
+      "scenario": "paraphrase_academic"
+    },
+    {
+      "id": 2,
+      "text_a": "Algoritmos de machine learning podem otimizar previsoes energeticas.",
+      "text_b": "Carregadores de veiculos eletricos precisam de gestao de potencia em tempo real.",
+      "is_similar": false,
+      "scenario": "completely_different"
+    },
+    {
+      "id": 3,
+      "text_a": "TF-IDF combinado com cosseno mede proximidade entre documentos.",
+      "text_b": "A representacao TF-IDF junto da similaridade de cosseno mede proximidade textual.",
+      "is_similar": true,
+      "scenario": "slight_rephrasing"
+    },
+    {
+      "id": 4,
+      "text_a": "Sensores IoT monitoram linhas de transmissao de energia.",
+      "text_b": "Jogos serios sao uteis para treinamento empresarial em ambiente digital.",
+      "is_similar": false,
+      "scenario": "different_domains"
+    },
+    {
+      "id": 5,
+      "text_a": "A distancia de Levenshtein calcula operacoes de edicao entre strings.",
+      "text_b": "Levenshtein estima quantas insercoes, remocoes e substituicoes transformam um texto em outro.",
+      "is_similar": true,
+      "scenario": "concept_explanation"
+    },
+    {
+      "id": 6,
+      "text_a": "O coeficiente de Jaccard compara intersecao e uniao de termos.",
+      "text_b": "A medicao de Jaccard usa a relacao entre termos em comum e termos totais.",
+      "is_similar": true,
+      "scenario": "mathematical_definition"
+    },
+    {
+      "id": 7,
+      "text_a": "A plataforma deve permitir exportacao de relatorios em CSV.",
+      "text_b": "As condicoes climaticas alteram a demanda de carregamento de carros eletricos.",
+      "is_similar": false,
+      "scenario": "unrelated_topics"
+    },
+    {
+      "id": 8,
+      "text_a": "A arquitetura em tres camadas facilita manutencao e testes automatizados.",
+      "text_b": "Separar apresentacao, API e processamento melhora manutencao e testabilidade.",
+      "is_similar": true,
+      "scenario": "architecture_explanation"
+    },
+    {
+      "id": 9,
+      "text_a": "O sistema deve comparar dois textos e retornar percentuais.",
+      "text_b": "A aplicacao recebe dois textos e devolve percentuais de similaridade.",
+      "is_similar": true,
+      "scenario": "requirement_specification"
+    },
+    {
+      "id": 10,
+      "text_a": "Redes de sensores para smart grids precisam de roteamento dinamico.",
+      "text_b": "A verificacao manual de semelhanca textual e lenta e sujeita a falhas.",
+      "is_similar": false,
+      "scenario": "different_problems"
+    },
+    {
+      "id": 11,
+      "text_a": "Similaridade textual e um conceito fundamental em recuperacao de informacao.",
+      "text_b": "Similaridade textual e um conceito fundamental em recuperacao de informacao.",
+      "is_similar": true,
+      "scenario": "exact_duplicate"
+    },
+    {
+      "id": 12,
+      "text_a": "Python e uma linguagem de programacao popular para ciencia de dados.",
+      "text_b": "Python e uma linguagm de programacao popular para ciencia de dados.",
+      "is_similar": true,
+      "scenario": "typo_single_char"
+    },
+    {
+      "id": 13,
+      "text_a": "O algoritmo TF-IDF captura a importancia relativa das palavras.",
+      "text_b": "TF-IDF mede a iportancia relativa das palavras em um documento.",
+      "is_similar": true,
+      "scenario": "typo_vowel"
+    },
+    {
+      "id": 14,
+      "text_a": "A tokenizacao divide um texto em unidades menores como palavras.",
+      "text_b": "A tokenizacao separa um texto em tokens ou palavras individuais.",
+      "is_similar": true,
+      "scenario": "paraphrase_technical"
+    },
+    {
+      "id": 15,
+      "text_a": "Stopwords sao palavras muito frequentes que adicionam pouco valor semantico.",
+      "text_b": "Artigos, preposicoes e conjuncoes sao removidos no preprocessamento.",
+      "is_similar": true,
+      "scenario": "example_vs_definition"
+    },
+    {
+      "id": 16,
+      "text_a": "O Jaccard Index compara conjuntos de tokens de dois textos.",
+      "text_b": "Carros eletricos precisam de baterias de alta capacidade.",
+      "is_similar": false,
+      "scenario": "totally_unrelated"
+    },
+    {
+      "id": 17,
+      "text_a": "Lematizacao reduz palavras a sua forma canonica ou lemma.",
+      "text_b": "Lematizacao reduz palavras a sua forma canonica ou lemma.",
+      "is_similar": true,
+      "scenario": "identical_sentences"
+    },
+    {
+      "id": 18,
+      "text_a": "A distancia de edicao calcula operacoes necessarias para transformar uma string.",
+      "text_b": "A distancia de edicao calcula operacoes necessarias para transformar uma string.",
+      "is_similar": true,
+      "scenario": "exact_match"
+    },
+    {
+      "id": 19,
+      "text_a": "Machine learning e um subconjunto de inteligencia artificial.",
+      "text_b": "Inteligencia artificial inclui machine learning como uma subdisciplina.",
+      "is_similar": true,
+      "scenario": "domain_knowledge"
+    },
+    {
+      "id": 20,
+      "text_a": "A normalizacao de texto remove acentos e converte para minusculas.",
+      "text_b": "Conversao para minusculas e remocao de acento normalizamao o texto.",
+      "is_similar": true,
+      "scenario": "order_change"
+    },
+    {
+      "id": 21,
+      "text_a": "Recuperacao de informacao envolve buscar documentos relevantes em uma colecao.",
+      "text_b": "Information retrieval involves searching for relevant documents in a collection.",
+      "is_similar": true,
+      "scenario": "language_translation"
+    },
+    {
+      "id": 22,
+      "text_a": "A similaridade de cosseno computa o angulo entre dois vetores.",
+      "text_b": "Cosseno de similaridade mede o angulo entre vetores TF-IDF.",
+      "is_similar": true,
+      "scenario": "mathematical_concept"
+    },
+    {
+      "id": 23,
+      "text_a": "Preprocessamento de texto e essencial para melhorar a qualidade.",
+      "text_b": "Preprocessamento de texto e essencial para melhorar a qualidade.",
+      "is_similar": true,
+      "scenario": "duplicate_identical"
+    },
+    {
+      "id": 24,
+      "text_a": "A interface web permite upload de arquivos e colagem de texto.",
+      "text_b": "Usuarios podem enviar arquivos ou copiar texto na interface web.",
+      "is_similar": true,
+      "scenario": "user_interface"
+    },
+    {
+      "id": 25,
+      "text_a": "Banco de dados SQLite permite persistencia sem dependencias externas.",
+      "text_b": "Banco de dados MySQL oferece persistencia com gerenciador centralizado.",
+      "is_similar": false,
+      "scenario": "tool_comparison"
+    },
+    {
+      "id": 26,
+      "text_a": "Testes automatizados validam cada componente do sistema.",
+      "text_b": "Testes automatizados validam cada componente do sistema.",
+      "is_similar": true,
+      "scenario": "software_testing"
+    }
+  ]
+}

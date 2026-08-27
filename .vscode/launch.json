@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flask Debug",
+      "type": "python",
+      "request": "launch",
+      "module": "flask",
+      "args": ["--app", "src.main", "run", "--debug"],
+      "env": {
+        "FLASK_APP": "src.main",
+        "FLASK_ENV": "development"
+      },
+      "justMyCode": true
+    }
+  ]
+}
