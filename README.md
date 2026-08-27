@@ -68,6 +68,10 @@ python -m scripts.generate_report
 
 O arquivo sera salvo em `reports/`.
 
+## Texto oficial do TCC
+
+- `docs/TCC_ARTIGO_OFICIAL_MARCELO.md`: versao textual oficial consolidada do artigo, alinhada com a estrutura e escopo da ferramenta implementada.
+
 ## Roadmap tecnico
 
 1. Expandir dataset com cenarios adicionais da area academica e juridica
