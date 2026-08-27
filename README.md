@@ -68,6 +68,17 @@ python -m scripts.generate_report
 
 O arquivo sera salvo em `reports/`.
 
+## Prototipo standalone
+
+Executar comparacao rapida via linha de comando:
+
+```bash
+python prototipo_comparador.py "texto A" "texto B"
+```
+
+O comando retorna percentuais de TF-IDF+cosseno, Jaccard e Levenshtein,
+alem de media e interpretacao qualitativa (baixa, moderada ou alta).
+
 ## Texto oficial do TCC
 
 - `docs/TCC_ARTIGO_OFICIAL_MARCELO.md`: versao textual oficial consolidada do artigo, alinhada com a estrutura e escopo da ferramenta implementada.
