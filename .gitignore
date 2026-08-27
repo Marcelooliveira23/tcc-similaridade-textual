@@ -21,4 +21,17 @@ htmlcov/
 # OS/editor
 .DS_Store
 Thumbs.db
-.vscode/settings.json
+.vscode/
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/excel-pq-symbols/
+!.vscode/excel-pq-symbols/excel-pq-symbols.json
+
+# Local generated artifacts
+*.docx
+*.doc
+*.pdf
+*.odt
+*.rtf
+*.md
+*.txt
