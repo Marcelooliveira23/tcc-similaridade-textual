@@ -247,36 +247,6 @@ def compare_texts():
         return jsonify({"error": f"Erro ao comparar textos: {exc}"}), 500
 
 
-@api_bp.post("/compare-ai")
-def compare_texts_ai():
-    payload = request.get_json(silent=True) or {}
-
-    text_a = payload.get("text_a", "")
-    text_b = payload.get("text_b", "")
-    include_providers = bool(payload.get("include_providers", False))
-
-    max_chars = int(current_app.config.get("MAX_TEXT_CHARS", 100_000))
-    validation_error = _validate_texts(text_a, text_b, max_chars=max_chars)
-    if validation_error:
-        logger.warning(
-            "comparison_validation_failed %s",
-            json.dumps({"route": "/compare-ai", "text_a_length": len(text_a), "text_b_length": len(text_b)}, ensure_ascii=False),
-        )
-        return validation_error
-
-    service = current_app.config["comparison_service"]
-    try:
-        result = service.compare_with_ai(text_a, text_b, include_providers=include_providers)
-        logger.info(
-            "comparison_ai_completed %s",
-            json.dumps({"route": "/compare-ai", "providers": include_providers}, ensure_ascii=False),
-        )
-        return jsonify(result), 200
-    except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("comparison_ai_failed %s", json.dumps({"route": "/compare-ai"}, ensure_ascii=False))
-        return jsonify({"error": f"Erro ao comparar textos com IA: {exc}"}), 500
-
-
 @api_bp.post("/compare-files")
 def compare_files():
     file_a = request.files.get("file_a")

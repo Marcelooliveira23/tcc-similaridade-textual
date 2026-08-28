@@ -8,18 +8,12 @@ This service implements the Facade pattern, presenting a unified interface
 to API routes while coordinating algorithm execution and data storage.
 """
 
-import os
 import statistics
 import threading
-from collections.abc import Callable
 from collections import OrderedDict
 from datetime import datetime, timezone
 from hashlib import sha256
 from time import perf_counter
-
-import requests
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 
 from src.algorithms.jaccard import jaccard_similarity
 from src.algorithms.levenshtein import normalized_levenshtein_similarity
@@ -191,166 +185,6 @@ class ComparisonService:
 
         self.repository.save(result)
         return result.to_dict()
-
-    @staticmethod
-    def ml_semantic_similarity(text_a: str, text_b: str) -> float:
-        """Compute ML-based semantic similarity using character n-gram TF-IDF.
-
-        This score is language-agnostic and works reasonably well for natural
-        language and source code (Python, Java, C/C++, C#, HTML, CSS, etc.).
-        """
-        if not text_a.strip() and not text_b.strip():
-            return 1.0
-        if not text_a.strip() or not text_b.strip():
-            return 0.0
-
-        vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5))
-        matrix = vectorizer.fit_transform([text_a, text_b])
-        score = float(cosine_similarity(matrix[0:1], matrix[1:2])[0][0])
-        return round(max(0.0, min(1.0, score)), 6)
-
-    @staticmethod
-    def _cosine_from_vectors(vector_a: list[float], vector_b: list[float]) -> float:
-        if not vector_a or not vector_b or len(vector_a) != len(vector_b):
-            return 0.0
-
-        dot = sum(a * b for a, b in zip(vector_a, vector_b, strict=False))
-        norm_a = sum(a * a for a in vector_a) ** 0.5
-        norm_b = sum(b * b for b in vector_b) ** 0.5
-        if norm_a == 0.0 or norm_b == 0.0:
-            return 0.0
-        return round(max(0.0, min(1.0, dot / (norm_a * norm_b))), 6)
-
-    def _provider_similarity(
-        self,
-        provider: str,
-        text_a: str,
-        text_b: str,
-        fn: Callable[[str], list[float]],
-    ) -> dict:
-        try:
-            emb_a = fn(text_a)
-            emb_b = fn(text_b)
-            return {"provider": provider, "score": self._cosine_from_vectors(emb_a, emb_b)}
-        except Exception as exc:  # pragma: no cover - network/provider defensive handling
-            return {"provider": provider, "score": None, "error": str(exc)}
-
-    @staticmethod
-    def _gemini_embedding(text: str) -> list[float]:
-        api_key = os.getenv("TCC_GEMINI_API_KEY", "").strip()
-        if not api_key:
-            raise RuntimeError("TCC_GEMINI_API_KEY nao configurada")
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={api_key}"
-        payload = {
-            "model": "models/text-embedding-004",
-            "content": {"parts": [{"text": text[:12000]}]},
-        }
-        response = requests.post(url, json=payload, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-        values = data.get("embedding", {}).get("values", [])
-        if not isinstance(values, list) or not values:
-            raise RuntimeError("Resposta de embedding Gemini invalida")
-        return [float(v) for v in values]
-
-    @staticmethod
-    def _openai_embedding(text: str) -> list[float]:
-        api_key = os.getenv("TCC_OPENAI_API_KEY", "").strip()
-        if not api_key:
-            raise RuntimeError("TCC_OPENAI_API_KEY nao configurada")
-
-        url = "https://api.openai.com/v1/embeddings"
-        payload = {"model": "text-embedding-3-small", "input": text[:12000]}
-        response = requests.post(
-            url,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=30,
-        )
-        response.raise_for_status()
-        data = response.json()
-        vector = ((data.get("data") or [{}])[0]).get("embedding", [])
-        if not isinstance(vector, list) or not vector:
-            raise RuntimeError("Resposta de embedding OpenAI invalida")
-        return [float(v) for v in vector]
-
-    @staticmethod
-    def _claude_similarity(text_a: str, text_b: str) -> float:
-        api_key = os.getenv("TCC_CLAUDE_API_KEY", "").strip()
-        if not api_key:
-            raise RuntimeError("TCC_CLAUDE_API_KEY nao configurada")
-
-        url = "https://api.anthropic.com/v1/messages"
-        prompt = (
-            "Retorne somente um numero entre 0 e 1 para similaridade textual. "
-            "0 significa totalmente diferente e 1 significa praticamente igual.\n"
-            f"Texto A:\n{text_a[:8000]}\n\nTexto B:\n{text_b[:8000]}"
-        )
-        response = requests.post(
-            url,
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": "claude-3-5-haiku-latest",
-                "max_tokens": 16,
-                "temperature": 0,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=30,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        text = (((payload.get("content") or [{}])[0]).get("text") or "").strip()
-        score = float(text)
-        return round(max(0.0, min(1.0, score)), 6)
-
-    def compare_with_ai(self, text_a: str, text_b: str, include_providers: bool = False) -> dict:
-        """Return classic + ML hybrid similarity and optional provider-based AI scores."""
-        classic = self.compare(text_a, text_b)
-        ml_score = self.ml_semantic_similarity(text_a, text_b)
-
-        ensemble = round(
-            (
-                0.35 * classic["tfidf_cosine"]
-                + 0.2 * classic["jaccard"]
-                + 0.2 * classic["levenshtein_similarity"]
-                + 0.25 * ml_score
-            ),
-            6,
-        )
-
-        response = {
-            "classic": classic,
-            "ai": {
-                "ml_semantic": ml_score,
-                "ensemble": ensemble,
-                "providers": [],
-            },
-            "supported_ai_providers": ["gemini", "openai", "claude"],
-        }
-
-        if not include_providers:
-            return response
-
-        providers = [
-            self._provider_similarity("gemini", text_a, text_b, self._gemini_embedding),
-            self._provider_similarity("openai", text_a, text_b, self._openai_embedding),
-        ]
-
-        try:
-            providers.append({"provider": "claude", "score": self._claude_similarity(text_a, text_b)})
-        except Exception as exc:  # pragma: no cover - network/provider defensive handling
-            providers.append({"provider": "claude", "score": None, "error": str(exc)})
-
-        response["ai"]["providers"] = providers
-        return response
 
     def benchmark_performance(self, pairs: list[dict]) -> dict:
         """Measure latency stats by algorithm and input format."""

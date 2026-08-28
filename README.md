@@ -5,11 +5,6 @@ API e interface web local para comparação de similaridade textual com três al
 - Jaccard
 - Levenshtein normalizado
 
-Também inclui camada de IA híbrida:
-- similaridade semântica local com scikit-learn (char n-grams)
-- score ensemble (clássico + IA local)
-- suporte opcional a provedores externos: Gemini, OpenAI e Claude
-
 ## Requisitos
 
 - Python 3.11+ (recomendado 3.12+)
@@ -29,8 +24,6 @@ Bibliotecas incluídas no projeto:
 - matplotlib
 - seaborn
 - openpyxl
-- scikit-learn
-- requests
 
 ## Instalação
 
@@ -69,28 +62,10 @@ Aplicação disponível em `http://127.0.0.1:5000`.
 ## Endpoints úteis
 
 - `POST /compare`: comparação clássica
-- `POST /compare-ai`: comparação clássica + IA híbrida
 - `POST /compare-files`: comparação por arquivos
 - `GET /jobs/<job_id>`: consulta status de processamento assíncrono
 - `POST /benchmark/performance`: benchmark de latência por algoritmo e formato
 - `GET /supported-formats`: lista extensões suportadas por grupos
-
-Payload básico para `POST /compare-ai`:
-
-```json
-{
-	"text_a": "conteudo A",
-	"text_b": "conteudo B",
-	"include_providers": false
-}
-```
-
-Se `include_providers` for `true`, as integrações externas são tentadas quando houver chave configurada.
-
-Variáveis opcionais para IA externa:
-- `TCC_GEMINI_API_KEY`
-- `TCC_OPENAI_API_KEY`
-- `TCC_CLAUDE_API_KEY`
 
 Variáveis opcionais de performance:
 - `TCC_CACHE_MAX_ITEMS` (default `1024`): tamanho do cache de comparações

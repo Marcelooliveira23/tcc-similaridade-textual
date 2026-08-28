@@ -20,9 +20,17 @@ def run_load(total_requests: int = 50, workers: int = 10) -> dict:
 
     def worker(i: int):
         client = app.test_client()
-        payload = {"text_a": f"codigo python {i}", "text_b": f"codigo python {i + 1}"}
+        payload = {
+            "pairs": [
+                {
+                    "text_a": f"codigo python {i}",
+                    "text_b": f"codigo python {i + 1}",
+                    "format": "python",
+                }
+            ]
+        }
         t0 = time.perf_counter()
-        response = client.post("/compare-ai", json=payload)
+        response = client.post("/benchmark/performance", json=payload)
         dt = (time.perf_counter() - t0) * 1000
         return response.status_code, dt
 
