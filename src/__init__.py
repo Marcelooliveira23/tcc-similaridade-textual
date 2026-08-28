@@ -13,8 +13,10 @@ def create_app(database_path: str | None = None, report_dir: str | None = None) 
     app = Flask(__name__)
 
     max_upload_bytes = int(os.getenv("TCC_MAX_UPLOAD_BYTES", 2 * 1024 * 1024))
+    max_text_chars = int(os.getenv("TCC_MAX_TEXT_CHARS", 100_000))
     db_path = database_path or os.getenv("TCC_DB_PATH", "data/comparisons.db")
     resolved_report_dir = report_dir or os.getenv("TCC_REPORT_DIR", "reports")
+    local_only = os.getenv("TCC_LOCAL_ONLY", "true").strip().lower() not in {"0", "false", "no"}
     repository = SQLiteComparisonRepository(db_path)
     service = ComparisonService(repository)
 
@@ -23,7 +25,9 @@ def create_app(database_path: str | None = None, report_dir: str | None = None) 
     app.config["report_dir"] = resolved_report_dir
     app.config["MAX_CONTENT_LENGTH"] = max_upload_bytes
     app.config["UPLOAD_MAX_BYTES"] = max_upload_bytes
+    app.config["MAX_TEXT_CHARS"] = max_text_chars
     app.config["APP_NAME"] = "tcc_similarity"
+    app.config["LOCAL_ONLY"] = local_only
 
     app.logger.setLevel(logging.INFO)
     if not app.logger.handlers:
@@ -42,6 +46,7 @@ def create_app(database_path: str | None = None, report_dir: str | None = None) 
                 "database_path": db_path,
                 "report_dir": resolved_report_dir,
                 "max_upload_bytes": max_upload_bytes,
+                "max_text_chars": max_text_chars,
             },
             ensure_ascii=False,
             sort_keys=True,

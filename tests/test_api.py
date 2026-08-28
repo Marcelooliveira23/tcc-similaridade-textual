@@ -61,6 +61,14 @@ def test_compare_texts_validation_error(client):
     assert response.status_code == 400
 
 
+def test_compare_texts_rejects_too_long_text(client):
+    huge_text = "a" * 100001
+    response = client.post("/compare", json={"text_a": huge_text, "text_b": "ok"})
+
+    assert response.status_code == 413
+    assert "limite" in response.get_json()["error"].lower()
+
+
 def test_history_returns_saved_comparisons(client):
     client.post("/compare", json={"text_a": "a", "text_b": "b"})
     response = client.get("/history")
@@ -69,6 +77,13 @@ def test_history_returns_saved_comparisons(client):
     history = response.get_json()
     assert isinstance(history, list)
     assert len(history) == 1
+
+
+def test_history_is_blocked_for_non_local_host(client):
+    response = client.get("/history", headers={"Host": "example.com"})
+
+    assert response.status_code == 403
+    assert "restrito" in response.get_json()["error"].lower()
 
 
 def test_compare_files_success(client):
@@ -139,6 +154,16 @@ def test_generate_algorithm_report_with_dataset_base(client):
     assert "ranking" in body["report"]
     assert "report_path" in body
     assert os.path.exists(body["report_path"])
+
+
+def test_generate_algorithm_report_rejects_dataset_outside_allowed_dir(client):
+    response = client.post(
+        "/report/generate",
+        json={"dataset_path": "README.md"},
+    )
+
+    assert response.status_code == 400
+    assert "dataset_path" in response.get_json()["error"]
 
 
 def test_benchmark_summary_uses_dataset_and_winner():

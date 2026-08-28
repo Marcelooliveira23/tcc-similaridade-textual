@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from io import StringIO
+from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, make_response, render_template, request
 
@@ -12,14 +13,71 @@ logger = logging.getLogger("tcc_similarity.api")
 api_bp = Blueprint("api", __name__)
 
 
-def _validate_texts(text_a: str, text_b: str):
+def _is_local_request() -> bool:
+    host = (request.host or "").split(":", 1)[0].lower()
+    if not host:
+        return False
+    if host in {"localhost", "127.0.0.1", "::1", "[::1]"}:
+        return True
+    return host.startswith("127.")
+
+
+def _require_local_access():
+    if not current_app.config.get("LOCAL_ONLY", True):
+        return None
+
+    if _is_local_request():
+        return None
+
+    logger.warning(
+        "blocked_non_local_access %s",
+        json.dumps({"host": request.host, "path": request.path}, ensure_ascii=False, sort_keys=True),
+    )
+    return jsonify({"error": "Acesso restrito ao ambiente local. Este app foi configurado para uso local apenas."}), 403
+
+
+@api_bp.before_app_request
+def _enforce_local_only():
+    if request.endpoint in {"api.index", "api.health_check", "api.supported_formats"}:
+        return None
+
+    response = _require_local_access()
+    if response is not None:
+        return response
+
+
+def _validate_texts(text_a: str, text_b: str, max_chars: int):
     if not isinstance(text_a, str) or not isinstance(text_b, str):
         return jsonify({"error": "text_a e text_b devem ser strings"}), 400
 
     if not text_a.strip() or not text_b.strip():
         return jsonify({"error": "text_a e text_b nao podem ser vazios"}), 400
 
+    if len(text_a) > max_chars or len(text_b) > max_chars:
+        return (
+            jsonify({"error": f"text_a/text_b excedem o limite de {max_chars} caracteres."}),
+            413,
+        )
+
     return None
+
+
+def _resolve_dataset_path(dataset_path: str) -> str:
+    datasets_dir = (Path(current_app.root_path).parent / "data" / "datasets").resolve()
+    candidate = Path(dataset_path)
+
+    if not candidate.is_absolute():
+        candidate = (Path.cwd() / candidate).resolve()
+    else:
+        candidate = candidate.resolve()
+
+    if candidate.suffix.lower() != ".json":
+        raise ValueError("dataset_path deve apontar para arquivo .json")
+
+    if datasets_dir != candidate and datasets_dir not in candidate.parents:
+        raise ValueError("dataset_path deve estar dentro de data/datasets")
+
+    return str(candidate)
 
 
 def _decode_file_text(file_storage) -> str:
@@ -81,7 +139,8 @@ def compare_texts():
     text_a = payload.get("text_a", "")
     text_b = payload.get("text_b", "")
 
-    validation_error = _validate_texts(text_a, text_b)
+    max_chars = int(current_app.config.get("MAX_TEXT_CHARS", 100_000))
+    validation_error = _validate_texts(text_a, text_b, max_chars=max_chars)
     if validation_error:
         logger.warning(
             "comparison_validation_failed %s",
@@ -94,7 +153,7 @@ def compare_texts():
         result = service.compare_and_store(text_a, text_b)
         logger.info(
             "comparison_completed %s",
-            json.dumps({"route": "/compare", "scores": result}, ensure_ascii=False),
+            json.dumps({"route": "/compare", "stored_id": result.get("id"), "text_lengths": {"a": len(text_a), "b": len(text_b)}}, ensure_ascii=False),
         )
         return jsonify(result), 201
     except Exception as exc:  # pragma: no cover - defensive logging
@@ -127,7 +186,8 @@ def compare_files():
         logger.warning("file_extract_failed %s", json.dumps({"label": "B", "file_name": file_b.filename, "error": err_b}, ensure_ascii=False))
         return jsonify({"error": f"Arquivo B: {err_b}"}), 422
 
-    validation_error = _validate_texts(text_a, text_b)
+    max_chars = int(current_app.config.get("MAX_TEXT_CHARS", 100_000))
+    validation_error = _validate_texts(text_a, text_b, max_chars=max_chars)
     if validation_error:
         logger.warning(
             "comparison_validation_failed %s",
@@ -142,7 +202,7 @@ def compare_files():
         result["file_b"] = file_b.filename
         logger.info(
             "comparison_completed %s",
-            json.dumps({"route": "/compare-files", "file_a": file_a.filename, "file_b": file_b.filename, "scores": result}, ensure_ascii=False),
+            json.dumps({"route": "/compare-files", "file_a": file_a.filename, "file_b": file_b.filename, "stored_id": result.get("id")}, ensure_ascii=False),
         )
         return jsonify(result), 201
     except Exception as exc:  # pragma: no cover - defensive logging
@@ -218,6 +278,11 @@ def generate_algorithm_report():
 
     if pairs is None:
         dataset_path = payload.get("dataset_path", "data/datasets/base_pairs.json")
+        try:
+            dataset_path = _resolve_dataset_path(dataset_path)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
         if not os.path.exists(dataset_path):
             return jsonify({"error": f"dataset nao encontrado: {dataset_path}"}), 400
 
