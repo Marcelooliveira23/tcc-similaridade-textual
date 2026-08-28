@@ -9,8 +9,13 @@ to API routes while coordinating algorithm execution and data storage.
 """
 
 import os
+import statistics
+import threading
 from collections.abc import Callable
+from collections import OrderedDict
 from datetime import datetime, timezone
+from hashlib import sha256
+from time import perf_counter
 
 import requests
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -35,13 +40,62 @@ class ComparisonService:
     
     ALGORITHMS = ("tfidf_cosine", "jaccard", "levenshtein")
 
-    def __init__(self, repository: ComparisonRepository) -> None:
+    def __init__(self, repository: ComparisonRepository, cache_max_items: int = 1024) -> None:
         """Initialize service with dependency injection of repository.
         
         Args:
             repository (ComparisonRepository): Data access object for persistence.
         """
         self.repository = repository
+        self.cache_max_items = max(0, int(cache_max_items))
+        self._cache_lock = threading.Lock()
+        self._score_cache: OrderedDict[str, dict] = OrderedDict()
+        self._cache_hits = 0
+        self._cache_misses = 0
+
+    @staticmethod
+    def _cache_key(text_a: str, text_b: str) -> str:
+        digest = sha256()
+        digest.update(text_a.encode("utf-8", errors="ignore"))
+        digest.update(b"\x00\x1f\x00")
+        digest.update(text_b.encode("utf-8", errors="ignore"))
+        return digest.hexdigest()
+
+    def _cache_get(self, key: str) -> dict | None:
+        if self.cache_max_items <= 0:
+            return None
+
+        with self._cache_lock:
+            cached = self._score_cache.get(key)
+            if cached is None:
+                self._cache_misses += 1
+                return None
+            self._score_cache.move_to_end(key)
+            self._cache_hits += 1
+            return dict(cached)
+
+    def _cache_set(self, key: str, value: dict) -> None:
+        if self.cache_max_items <= 0:
+            return
+
+        with self._cache_lock:
+            self._score_cache[key] = dict(value)
+            self._score_cache.move_to_end(key)
+            while len(self._score_cache) > self.cache_max_items:
+                self._score_cache.popitem(last=False)
+
+    def cache_stats(self) -> dict:
+        with self._cache_lock:
+            total = self._cache_hits + self._cache_misses
+            hit_rate = (self._cache_hits / total) if total else 0.0
+            return {
+                "enabled": self.cache_max_items > 0,
+                "max_items": self.cache_max_items,
+                "current_items": len(self._score_cache),
+                "hits": self._cache_hits,
+                "misses": self._cache_misses,
+                "hit_rate": round(hit_rate, 6),
+            }
 
     @staticmethod
     def _algorithm_score(text_a: str, text_b: str, algorithm: str) -> float:
@@ -90,11 +144,18 @@ class ComparisonService:
         Note:
             Does NOT persist results. Use compare_and_store() for persistence.
         """
-        return {
+        key = self._cache_key(text_a, text_b)
+        cached = self._cache_get(key)
+        if cached is not None:
+            return cached
+
+        scores = {
             "tfidf_cosine": round(tfidf_cosine_similarity(text_a, text_b), 6),
             "jaccard": round(jaccard_similarity(text_a, text_b), 6),
             "levenshtein_similarity": round(normalized_levenshtein_similarity(text_a, text_b), 6),
         }
+        self._cache_set(key, scores)
+        return scores
 
     def compare_and_store(self, text_a: str, text_b: str) -> dict:
         """Compute similarity scores and persist comparison to repository.
@@ -290,6 +351,53 @@ class ComparisonService:
 
         response["ai"]["providers"] = providers
         return response
+
+    def benchmark_performance(self, pairs: list[dict]) -> dict:
+        """Measure latency stats by algorithm and input format."""
+        if not isinstance(pairs, list) or not pairs:
+            raise ValueError("pairs deve ser uma lista nao vazia")
+
+        durations: dict[str, dict[str, list[float]]] = {
+            algorithm: {} for algorithm in self.ALGORITHMS
+        }
+
+        for index, pair in enumerate(pairs):
+            text_a = pair.get("text_a", "")
+            text_b = pair.get("text_b", "")
+            fmt = str(pair.get("format", "text")).lower().strip() or "text"
+
+            if not isinstance(text_a, str) or not isinstance(text_b, str):
+                raise ValueError(f"pair[{index}] deve conter text_a/text_b string")
+
+            for algorithm in self.ALGORITHMS:
+                t0 = perf_counter()
+                self._algorithm_score(text_a, text_b, algorithm)
+                elapsed_ms = (perf_counter() - t0) * 1000
+                durations[algorithm].setdefault(fmt, []).append(elapsed_ms)
+
+        def summarize(values: list[float]) -> dict:
+            sorted_values = sorted(values)
+            p95_index = max(0, min(len(sorted_values) - 1, int(0.95 * (len(sorted_values) - 1))))
+            return {
+                "count": len(values),
+                "mean_ms": round(sum(values) / len(values), 4),
+                "median_ms": round(statistics.median(values), 4),
+                "p95_ms": round(sorted_values[p95_index], 4),
+            }
+
+        by_algorithm = {}
+        for algorithm, by_format in durations.items():
+            merged = [v for values in by_format.values() for v in values]
+            by_algorithm[algorithm] = {
+                "overall": summarize(merged),
+                "by_format": {fmt: summarize(values) for fmt, values in by_format.items()},
+            }
+
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "samples": len(pairs),
+            "algorithms": by_algorithm,
+        }
 
     def get_history(self) -> list[dict]:
         """Retrieve all stored comparison results from repository.

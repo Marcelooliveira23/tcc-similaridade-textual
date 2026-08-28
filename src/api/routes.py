@@ -3,15 +3,39 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import os
+import threading
+from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
+from uuid import uuid4
 
 from flask import Blueprint, current_app, jsonify, make_response, render_template, request
 
-from src.api.file_extractor import SUPPORTED_EXTENSIONS, extract_text, extract_text_from_bytes
+from src.api.file_extractor import SUPPORTED_EXTENSIONS, extract_text_from_bytes
 
 logger = logging.getLogger("tcc_similarity.api")
 api_bp = Blueprint("api", __name__)
+_jobs_lock = threading.Lock()
+_jobs: dict[str, dict] = {}
+_job_executor: ThreadPoolExecutor | None = None
+
+
+def _get_job_executor() -> ThreadPoolExecutor:
+    global _job_executor
+    if _job_executor is None:
+        workers = int(current_app.config.get("ASYNC_WORKERS", 2))
+        _job_executor = ThreadPoolExecutor(max_workers=max(1, workers))
+    return _job_executor
+
+
+def _job_set(job_id: str, payload: dict) -> None:
+    with _jobs_lock:
+        _jobs[job_id] = payload
+
+
+def _job_get(job_id: str) -> dict | None:
+    with _jobs_lock:
+        return _jobs.get(job_id)
 
 
 def _is_local_request() -> bool:
@@ -92,6 +116,7 @@ def _decode_file_text(file_storage) -> str:
 
 def _check_upload_limit(file_storage, label: str):
     max_bytes = int(current_app.config.get("MAX_CONTENT_LENGTH", 2 * 1024 * 1024))
+    per_ext_limits = current_app.config.get("UPLOAD_MAX_BYTES_BY_EXT", {})
     if not file_storage:
         return None
 
@@ -102,25 +127,85 @@ def _check_upload_limit(file_storage, label: str):
     except (AttributeError, OSError):
         size = 0
 
-    if size > max_bytes:
+    filename = getattr(file_storage, "filename", "unknown")
+    ext = Path(filename).suffix.lower()
+    effective_limit = int(per_ext_limits.get(ext, max_bytes))
+
+    if size > effective_limit:
         logger.warning(
             "upload_limit_exceeded %s",
             json.dumps(
                 {
                     "label": label,
-                    "file_name": getattr(file_storage, "filename", "unknown"),
+                    "file_name": filename,
+                    "file_ext": ext,
                     "size_bytes": size,
-                    "max_bytes": max_bytes,
+                    "max_bytes": effective_limit,
                 },
                 ensure_ascii=False,
                 sort_keys=True,
             ),
         )
         return (
-            jsonify({"error": f"Arquivo {label} excede o limite máximo de {max_bytes / (1024 * 1024):.1f} MB."}),
+            jsonify({"error": f"Arquivo {label} excede o limite máximo de {effective_limit / (1024 * 1024):.1f} MB."}),
             413,
         )
     return None
+
+
+def _compare_file_payload(service, file_name_a: str, raw_a: bytes, file_name_b: str, raw_b: bytes, max_chars: int) -> dict:
+    text_a, err_a = extract_text_from_bytes(raw_a, file_name_a)
+    if err_a:
+        raise ValueError(f"Arquivo A: {err_a}")
+
+    text_b, err_b = extract_text_from_bytes(raw_b, file_name_b)
+    if err_b:
+        raise ValueError(f"Arquivo B: {err_b}")
+
+    if not text_a.strip() or not text_b.strip():
+        raise ValueError("text_a e text_b nao podem ser vazios")
+
+    if len(text_a) > max_chars or len(text_b) > max_chars:
+        raise ValueError(f"text_a/text_b excedem o limite de {max_chars} caracteres.")
+
+    result = service.compare_and_store(text_a, text_b)
+    result["file_a"] = file_name_a
+    result["file_b"] = file_name_b
+    return result
+
+
+def _run_async_file_job(job_id: str, service, file_name_a: str, raw_a: bytes, file_name_b: str, raw_b: bytes, max_chars: int) -> None:
+    _job_set(
+        job_id,
+        {
+            "status": "running",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "result": None,
+            "error": None,
+        },
+    )
+
+    try:
+        result = _compare_file_payload(service, file_name_a, raw_a, file_name_b, raw_b, max_chars)
+        _job_set(
+            job_id,
+            {
+                "status": "completed",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "result": result,
+                "error": None,
+            },
+        )
+    except Exception as exc:  # pragma: no cover - defensive job handling
+        _job_set(
+            job_id,
+            {
+                "status": "failed",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "result": None,
+                "error": str(exc),
+            },
+        )
 
 
 @api_bp.get("/")
@@ -209,42 +294,58 @@ def compare_files():
 
     raw_a = file_a.read()
     raw_b = file_b.read()
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future_a = executor.submit(extract_text_from_bytes, raw_a, file_a.filename or "")
-        future_b = executor.submit(extract_text_from_bytes, raw_b, file_b.filename or "")
-        text_a, err_a = future_a.result()
-        text_b, err_b = future_b.result()
-
-    if err_a:
-        logger.warning("file_extract_failed %s", json.dumps({"label": "A", "file_name": file_a.filename, "error": err_a}, ensure_ascii=False))
-        return jsonify({"error": f"Arquivo A: {err_a}"}), 422
-    if err_b:
-        logger.warning("file_extract_failed %s", json.dumps({"label": "B", "file_name": file_b.filename, "error": err_b}, ensure_ascii=False))
-        return jsonify({"error": f"Arquivo B: {err_b}"}), 422
-
     max_chars = int(current_app.config.get("MAX_TEXT_CHARS", 100_000))
-    validation_error = _validate_texts(text_a, text_b, max_chars=max_chars)
-    if validation_error:
-        logger.warning(
-            "comparison_validation_failed %s",
-            json.dumps({"route": "/compare-files", "file_a": file_a.filename, "file_b": file_b.filename}, ensure_ascii=False),
-        )
-        return validation_error
+
+    async_threshold = int(current_app.config.get("ASYNC_COMPARE_THRESHOLD_BYTES", 1024 * 1024))
+    should_async = len(raw_a) >= async_threshold or len(raw_b) >= async_threshold
 
     service = current_app.config["comparison_service"]
+
+    if should_async:
+        job_id = uuid4().hex
+        _job_set(
+            job_id,
+            {
+                "status": "queued",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "result": None,
+                "error": None,
+            },
+        )
+        _get_job_executor().submit(
+            _run_async_file_job,
+            job_id,
+            service,
+            file_a.filename or "",
+            raw_a,
+            file_b.filename or "",
+            raw_b,
+            max_chars,
+        )
+        return jsonify({"job_id": job_id, "status": "queued", "check": f"/jobs/{job_id}"}), 202
+
     try:
-        result = service.compare_and_store(text_a, text_b)
-        result["file_a"] = file_a.filename
-        result["file_b"] = file_b.filename
+        result = _compare_file_payload(service, file_a.filename or "", raw_a, file_b.filename or "", raw_b, max_chars)
         logger.info(
             "comparison_completed %s",
             json.dumps({"route": "/compare-files", "file_a": file_a.filename, "file_b": file_b.filename, "stored_id": result.get("id")}, ensure_ascii=False),
         )
         return jsonify(result), 201
+    except ValueError as exc:
+        if "limite" in str(exc):
+            return jsonify({"error": str(exc)}), 413
+        return jsonify({"error": str(exc)}), 422
     except Exception as exc:  # pragma: no cover - defensive logging
         logger.exception("comparison_failed %s", json.dumps({"route": "/compare-files"}, ensure_ascii=False))
         return jsonify({"error": f"Erro ao comparar arquivos: {exc}"}), 500
+
+
+@api_bp.get("/jobs/<job_id>")
+def get_job_status(job_id: str):
+    payload = _job_get(job_id)
+    if not payload:
+        return jsonify({"error": "job_id nao encontrado"}), 404
+    return jsonify(payload), 200
 
 
 @api_bp.get("/supported-formats")
@@ -314,6 +415,34 @@ def evaluate_dataset():
         return jsonify({"error": str(exc)}), 400
 
     return jsonify(result)
+
+
+@api_bp.post("/benchmark/performance")
+def benchmark_performance():
+    payload = request.get_json(silent=True) or {}
+    pairs = payload.get("pairs")
+
+    if pairs is None:
+        dataset_path = payload.get("dataset_path", "data/datasets/base_pairs.json")
+        try:
+            dataset_path = _resolve_dataset_path(dataset_path)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        if not os.path.exists(dataset_path):
+            return jsonify({"error": f"dataset nao encontrado: {dataset_path}"}), 400
+
+        with open(dataset_path, "r", encoding="utf-8") as f:
+            loaded = json.load(f)
+        pairs = loaded.get("pairs", [])
+
+    service = current_app.config["comparison_service"]
+    try:
+        result = service.benchmark_performance(pairs)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify(result), 200
 
 
 @api_bp.post("/report/generate")

@@ -1,5 +1,6 @@
 import os
 import tempfile
+import time
 from io import BytesIO
 
 import pytest
@@ -127,6 +128,18 @@ def test_app_uses_centralized_upload_limits():
     assert app.config["UPLOAD_MAX_BYTES"] == 2 * 1024 * 1024
 
 
+def test_compare_cache_stats_exposed_by_service():
+    app = create_app(database_path=":memory:", report_dir="reports")
+    service = app.config["comparison_service"]
+
+    service.compare("texto x", "texto y")
+    service.compare("texto x", "texto y")
+
+    stats = service.cache_stats()
+    assert stats["enabled"] is True
+    assert stats["hits"] >= 1
+
+
 def test_compare_files_rejects_file_too_large(client):
     oversized = b"A" * (2 * 1024 * 1024 + 1)
     data = {
@@ -137,6 +150,47 @@ def test_compare_files_rejects_file_too_large(client):
 
     assert response.status_code == 413
     assert "arquivo" in response.get_json()["error"].lower()
+
+
+def test_compare_files_respects_extension_limit(client):
+    client.application.config["UPLOAD_MAX_BYTES_BY_EXT"] = {".txt": 5}
+
+    data = {
+        "file_a": (BytesIO(b"123456"), "a.txt"),
+        "file_b": (BytesIO(b"ok"), "b.txt"),
+    }
+    response = client.post("/compare-files", data=data, content_type="multipart/form-data")
+
+    assert response.status_code == 413
+
+
+def test_compare_files_async_job_flow(client):
+    client.application.config["ASYNC_COMPARE_THRESHOLD_BYTES"] = 1
+
+    data = {
+        "file_a": (BytesIO(b"texto de teste A"), "a.txt"),
+        "file_b": (BytesIO(b"texto de teste B"), "b.txt"),
+    }
+    response = client.post("/compare-files", data=data, content_type="multipart/form-data")
+    assert response.status_code == 202
+
+    job_id = response.get_json()["job_id"]
+    deadline = time.time() + 2
+    statuses = {"queued", "running", "completed", "failed"}
+
+    final_payload = None
+    while time.time() < deadline:
+        poll = client.get(f"/jobs/{job_id}")
+        assert poll.status_code == 200
+        payload = poll.get_json()
+        assert payload["status"] in statuses
+        if payload["status"] in {"completed", "failed"}:
+            final_payload = payload
+            break
+        time.sleep(0.05)
+
+    assert final_payload is not None
+    assert final_payload["status"] == "completed"
 
 
 def test_evaluate_dataset_success(client):
@@ -156,6 +210,20 @@ def test_evaluate_dataset_success(client):
     assert body["algorithm"] == "jaccard"
     assert body["samples"] == 2
     assert "metrics" in body
+
+
+def test_benchmark_performance_endpoint(client):
+    payload = {
+        "pairs": [
+            {"text_a": "print('a')", "text_b": "print('b')", "format": "python"},
+            {"text_a": "<h1>a</h1>", "text_b": "<h1>b</h1>", "format": "html"},
+        ]
+    }
+    response = client.post("/benchmark/performance", json=payload)
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["samples"] == 2
+    assert "tfidf_cosine" in body["algorithms"]
 
 
 def test_export_history_csv(client):
