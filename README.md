@@ -12,6 +12,21 @@ API e interface web local para comparação de similaridade textual com três al
 
 Dependências Python são instaladas via `requirements.txt`.
 
+Bibliotecas incluídas no projeto:
+- Flask
+- pytest
+- pypdf
+- python-docx
+- odfpy
+- striprtf
+- pandas
+- numpy
+- matplotlib
+- seaborn
+- openpyxl
+- scikit-learn
+- requests
+
 ## Instalação
 
 ### Windows (PowerShell)
@@ -36,6 +51,12 @@ python -m pip install -r requirements.txt
 
 ```bash
 python -m flask --app src.main run --debug
+```
+
+Atalho Linux/macOS:
+
+```bash
+bash iniciar_sistema.sh
 ```
 
 Aplicação disponível em `http://127.0.0.1:5000`.
