@@ -1,4 +1,5 @@
 import csv
+from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import os
@@ -7,7 +8,7 @@ from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, make_response, render_template, request
 
-from src.api.file_extractor import SUPPORTED_EXTENSIONS, extract_text
+from src.api.file_extractor import SUPPORTED_EXTENSIONS, extract_text, extract_text_from_bytes
 
 logger = logging.getLogger("tcc_similarity.api")
 api_bp = Blueprint("api", __name__)
@@ -206,8 +207,14 @@ def compare_files():
     if limit_error:
         return limit_error
 
-    text_a, err_a = extract_text(file_a)
-    text_b, err_b = extract_text(file_b)
+    raw_a = file_a.read()
+    raw_b = file_b.read()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_a = executor.submit(extract_text_from_bytes, raw_a, file_a.filename or "")
+        future_b = executor.submit(extract_text_from_bytes, raw_b, file_b.filename or "")
+        text_a, err_a = future_a.result()
+        text_b, err_b = future_b.result()
 
     if err_a:
         logger.warning("file_extract_failed %s", json.dumps({"label": "A", "file_name": file_a.filename, "error": err_a}, ensure_ascii=False))

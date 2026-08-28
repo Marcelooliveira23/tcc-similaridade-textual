@@ -35,10 +35,19 @@ def extract_text(file_storage) -> tuple[str, str | None]:
         Tupla (texto_extraido, mensagem_de_erro_ou_None)
     """
     filename = file_storage.filename or ""
-    ext = os.path.splitext(filename)[1].lower()
+    raw = file_storage.read()
+    return extract_text_from_bytes(raw, filename)
+
+
+def extract_text_from_bytes(raw: bytes, filename: str) -> tuple[str, str | None]:
+    """Extrai texto a partir de bytes e nome de arquivo.
+
+    Essa função permite paralelizar extração de múltiplos arquivos sem depender
+    de objetos de upload/stream compartilhados.
+    """
+    ext = os.path.splitext(filename or "")[1].lower()
 
     if not ext:
-        # Tentar ler como texto simples se não tiver extensão
         ext = ".txt"
 
     if ext in (
@@ -64,31 +73,31 @@ def extract_text(file_storage) -> tuple[str, str | None]:
         ".css",
         ".m",
     ):
-        return _extract_plain_text(file_storage)
+        return _extract_plain_text(raw)
 
     if ext in (".xlsx", ".xlsm"):
-        return _extract_excel(file_storage)
+        return _extract_excel(raw)
 
     if ext == ".pdf":
-        return _extract_pdf(file_storage)
+        return _extract_pdf(raw)
 
     if ext == ".docx":
-        return _extract_docx(file_storage)
+        return _extract_docx(raw)
 
     if ext == ".doc":
-        return _extract_doc(file_storage)
+        return _extract_doc(raw)
 
     if ext == ".odt":
-        return _extract_odt(file_storage)
+        return _extract_odt(raw)
 
     if ext == ".rtf":
-        return _extract_rtf(file_storage)
+        return _extract_rtf(raw)
 
     if ext in (".html", ".htm"):
-        return _extract_html(file_storage)
+        return _extract_html(raw)
 
     # Tipo desconhecido — tenta como texto
-    text, err = _extract_plain_text(file_storage)
+    text, err = _extract_plain_text(raw)
     if err or not text.strip():
         return "", (
             f"Formato '{ext}' não suportado diretamente. "
@@ -99,9 +108,8 @@ def extract_text(file_storage) -> tuple[str, str | None]:
 
 # ─── Extratores específicos ───────────────────────────────────────────────────
 
-def _extract_plain_text(file_storage) -> tuple[str, str | None]:
+def _extract_plain_text(raw: bytes) -> tuple[str, str | None]:
     """TXT, CSV, MD — leitura direta."""
-    raw = file_storage.read()
     for enc in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
         try:
             return raw.decode(enc), None
@@ -110,7 +118,7 @@ def _extract_plain_text(file_storage) -> tuple[str, str | None]:
     return raw.decode("latin-1", errors="replace"), None
 
 
-def _extract_pdf(file_storage) -> tuple[str, str | None]:
+def _extract_pdf(raw: bytes) -> tuple[str, str | None]:
     """PDF — usa pypdf."""
     try:
         from pypdf import PdfReader
@@ -118,7 +126,6 @@ def _extract_pdf(file_storage) -> tuple[str, str | None]:
         return "", "Biblioteca pypdf não instalada. Execute: pip install pypdf"
 
     try:
-        raw = file_storage.read()
         reader = PdfReader(io.BytesIO(raw))
         pages = []
         for page in reader.pages:
@@ -133,7 +140,7 @@ def _extract_pdf(file_storage) -> tuple[str, str | None]:
         return "", f"Erro ao ler PDF: {exc}"
 
 
-def _extract_docx(file_storage) -> tuple[str, str | None]:
+def _extract_docx(raw: bytes) -> tuple[str, str | None]:
     """DOCX — usa python-docx."""
     try:
         from docx import Document
@@ -141,7 +148,6 @@ def _extract_docx(file_storage) -> tuple[str, str | None]:
         return "", "Biblioteca python-docx não instalada. Execute: pip install python-docx"
 
     try:
-        raw = file_storage.read()
         doc = Document(io.BytesIO(raw))
         paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
         # Incluir texto de tabelas também
@@ -155,9 +161,8 @@ def _extract_docx(file_storage) -> tuple[str, str | None]:
         return "", f"Erro ao ler DOCX: {exc}"
 
 
-def _extract_doc(file_storage) -> tuple[str, str | None]:
+def _extract_doc(raw: bytes) -> tuple[str, str | None]:
     """DOC (formato legado Word) — tenta extração básica."""
-    raw = file_storage.read()
     # Tentar como UTF-16 (formato interno de muitos DOC)
     for enc in ("utf-16", "utf-8", "latin-1"):
         try:
@@ -176,7 +181,7 @@ def _extract_doc(file_storage) -> tuple[str, str | None]:
     )
 
 
-def _extract_odt(file_storage) -> tuple[str, str | None]:
+def _extract_odt(raw: bytes) -> tuple[str, str | None]:
     """ODT (LibreOffice) — usa odfpy."""
     try:
         from odf.opendocument import load as odf_load
@@ -186,7 +191,6 @@ def _extract_odt(file_storage) -> tuple[str, str | None]:
         return "", "Biblioteca odfpy não instalada. Execute: pip install odfpy"
 
     try:
-        raw = file_storage.read()
         doc = odf_load(io.BytesIO(raw))
         paragraphs = []
         for elem in doc.text.getElementsByType(P):
@@ -198,7 +202,7 @@ def _extract_odt(file_storage) -> tuple[str, str | None]:
         return "", f"Erro ao ler ODT: {exc}"
 
 
-def _extract_rtf(file_storage) -> tuple[str, str | None]:
+def _extract_rtf(raw: bytes) -> tuple[str, str | None]:
     """RTF — usa striprtf."""
     try:
         from striprtf.striprtf import rtf_to_text
@@ -206,7 +210,6 @@ def _extract_rtf(file_storage) -> tuple[str, str | None]:
         return "", "Biblioteca striprtf não instalada. Execute: pip install striprtf"
 
     try:
-        raw = file_storage.read()
         for enc in ("utf-8", "latin-1", "cp1252"):
             try:
                 rtf_str = raw.decode(enc)
@@ -222,9 +225,8 @@ def _extract_rtf(file_storage) -> tuple[str, str | None]:
         return "", f"Erro ao ler RTF: {exc}"
 
 
-def _extract_html(file_storage) -> tuple[str, str | None]:
+def _extract_html(raw: bytes) -> tuple[str, str | None]:
     """HTML — extrai texto removendo tags."""
-    raw = file_storage.read()
     for enc in ("utf-8", "latin-1"):
         try:
             html = raw.decode(enc)
@@ -252,7 +254,7 @@ def _extract_html(file_storage) -> tuple[str, str | None]:
     return text, None
 
 
-def _extract_excel(file_storage) -> tuple[str, str | None]:
+def _extract_excel(raw: bytes) -> tuple[str, str | None]:
     """XLSX/XLSM — extrai conteúdo textual de células."""
     try:
         from openpyxl import load_workbook
@@ -260,7 +262,6 @@ def _extract_excel(file_storage) -> tuple[str, str | None]:
         return "", "Biblioteca openpyxl não instalada. Execute: pip install openpyxl"
 
     try:
-        raw = file_storage.read()
         workbook = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
         lines: list[str] = []
 

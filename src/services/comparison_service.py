@@ -441,14 +441,88 @@ class ComparisonService:
             "levenshtein": 0.75,
         }
 
+        key_by_algorithm = {
+            "tfidf_cosine": "tfidf_cosine",
+            "jaccard": "jaccard",
+            "levenshtein": "levenshtein_similarity",
+        }
+
+        states = {
+            algorithm: {
+                "tp": 0,
+                "fp": 0,
+                "tn": 0,
+                "fn": 0,
+                "scored_pairs": [],
+            }
+            for algorithm in self.ALGORITHMS
+        }
+
+        for index, pair in enumerate(pairs):
+            text_a = pair.get("text_a", "")
+            text_b = pair.get("text_b", "")
+            expected = pair.get("is_similar")
+
+            if not isinstance(text_a, str) or not isinstance(text_b, str):
+                raise ValueError(f"pair[{index}] deve conter text_a/text_b string")
+
+            if not isinstance(expected, bool):
+                raise ValueError(f"pair[{index}] deve conter is_similar boolean")
+
+            scores = self.compare(text_a, text_b)
+
+            for algorithm in self.ALGORITHMS:
+                state = states[algorithm]
+                score_key = key_by_algorithm[algorithm]
+                score = float(scores[score_key])
+                threshold = float(thresholds.get(algorithm, 0.7))
+                predicted = score >= threshold
+
+                if predicted and expected:
+                    state["tp"] += 1
+                elif predicted and not expected:
+                    state["fp"] += 1
+                elif not predicted and not expected:
+                    state["tn"] += 1
+                else:
+                    state["fn"] += 1
+
+                state["scored_pairs"].append(
+                    {
+                        "text_a": text_a,
+                        "text_b": text_b,
+                        "score": round(score, 6),
+                        "predicted_similar": predicted,
+                        "expected_similar": expected,
+                    }
+                )
+
         summaries = []
+        total = len(pairs)
         for algorithm in self.ALGORITHMS:
-            result = self.evaluate_pairs(
-                pairs,
-                algorithm=algorithm,
-                threshold=float(thresholds.get(algorithm, 0.7)),
+            state = states[algorithm]
+            tp, fp, tn, fn = state["tp"], state["fp"], state["tn"], state["fn"]
+
+            accuracy = (tp + tn) / total if total else 0.0
+            precision = tp / (tp + fp) if (tp + fp) else 0.0
+            recall = tp / (tp + fn) if (tp + fn) else 0.0
+            f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+
+            summaries.append(
+                {
+                    "algorithm": algorithm,
+                    "threshold": float(thresholds.get(algorithm, 0.7)),
+                    "samples": total,
+                    "confusion_matrix": {"tp": tp, "fp": fp, "tn": tn, "fn": fn},
+                    "metrics": {
+                        "accuracy": round(accuracy, 6),
+                        "precision": round(precision, 6),
+                        "recall": round(recall, 6),
+                        "f1": round(f1, 6),
+                    },
+                    "scored_pairs": state["scored_pairs"],
+                }
             )
-            summaries.append(result)
 
         ranking = sorted(
             [
