@@ -35,3 +35,8 @@ Thumbs.db
 *.rtf
 *.md
 *.txt
+!requirements.txt
+reports/
+ENTREGA_FINAL*
+scripts/gerar_*word.py
+scripts/gerar_entrega_final_word.py
