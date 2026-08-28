@@ -15,8 +15,11 @@ SUPPORTED_EXTENSIONS = {
     ".doc",
     ".odt",
     ".rtf",
+    ".xlsx", ".xlsm",
     ".csv",
     ".md", ".markdown",
+    ".json", ".xml", ".yml", ".yaml", ".sql",
+    ".py", ".java", ".c", ".cpp", ".h", ".hpp", ".cs", ".js", ".ts", ".html", ".htm", ".css", ".m",
     ".html", ".htm",
 }
 
@@ -38,8 +41,33 @@ def extract_text(file_storage) -> tuple[str, str | None]:
         # Tentar ler como texto simples se não tiver extensão
         ext = ".txt"
 
-    if ext in (".txt", ".text", ".csv", ".md", ".markdown"):
+    if ext in (
+        ".txt",
+        ".text",
+        ".csv",
+        ".md",
+        ".markdown",
+        ".json",
+        ".xml",
+        ".yml",
+        ".yaml",
+        ".sql",
+        ".py",
+        ".java",
+        ".c",
+        ".cpp",
+        ".h",
+        ".hpp",
+        ".cs",
+        ".js",
+        ".ts",
+        ".css",
+        ".m",
+    ):
         return _extract_plain_text(file_storage)
+
+    if ext in (".xlsx", ".xlsm"):
+        return _extract_excel(file_storage)
 
     if ext == ".pdf":
         return _extract_pdf(file_storage)
@@ -222,3 +250,30 @@ def _extract_html(file_storage) -> tuple[str, str | None]:
     # Compactar espaços
     text = re.sub(r"\s+", " ", text).strip()
     return text, None
+
+
+def _extract_excel(file_storage) -> tuple[str, str | None]:
+    """XLSX/XLSM — extrai conteúdo textual de células."""
+    try:
+        from openpyxl import load_workbook
+    except ImportError:
+        return "", "Biblioteca openpyxl não instalada. Execute: pip install openpyxl"
+
+    try:
+        raw = file_storage.read()
+        workbook = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        lines: list[str] = []
+
+        for sheet in workbook.worksheets:
+            lines.append(f"[sheet] {sheet.title}")
+            for row in sheet.iter_rows(values_only=True):
+                values = [str(v).strip() for v in row if v is not None and str(v).strip()]
+                if values:
+                    lines.append(" | ".join(values))
+
+        text = "\n".join(lines).strip()
+        if not text:
+            return "", "Planilha sem conteúdo textual para extração."
+        return text, None
+    except Exception as exc:
+        return "", f"Erro ao ler arquivo Excel: {exc}"

@@ -55,6 +55,28 @@ def test_compare_texts_success(client):
     assert body["tfidf_cosine"] >= 0.99
 
 
+def test_compare_texts_ai_success(client):
+    payload = {"text_a": "def soma(a,b): return a+b", "text_b": "def add(x,y): return x+y"}
+    response = client.post("/compare-ai", json=payload)
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert "classic" in body
+    assert "ai" in body
+    assert "ml_semantic" in body["ai"]
+    assert 0.0 <= body["ai"]["ml_semantic"] <= 1.0
+
+
+def test_supported_formats_groups(client):
+    response = client.get("/supported-formats")
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert "groups" in body
+    assert ".py" in body["groups"]["code"]
+    assert ".xlsx" in body["groups"]["office"]
+
+
 def test_compare_texts_validation_error(client):
     response = client.post("/compare", json={"text_a": "", "text_b": "ok"})
 

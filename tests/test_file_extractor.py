@@ -143,6 +143,27 @@ def test_extract_odt():
     assert "ODT" in text
 
 
+def test_extract_xlsx():
+    from src.api.file_extractor import extract_text
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Dados"
+    ws.append(["linguagem", "valor"])
+    ws.append(["python", 10])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    fs = FakeFileStorage(buf.read(), "planilha.xlsx")
+    text, err = extract_text(fs)
+    assert err is None
+    assert "[sheet] Dados" in text
+    assert "python" in text
+
+
 # ─── Formato não suportado ────────────────────────────────────────────────────
 
 def test_unsupported_format():
@@ -160,5 +181,5 @@ def test_unsupported_format():
 
 def test_supported_extensions_contains_expected():
     from src.api.file_extractor import SUPPORTED_EXTENSIONS
-    for ext in [".txt", ".pdf", ".docx", ".odt", ".rtf", ".csv", ".md", ".html"]:
+    for ext in [".txt", ".pdf", ".docx", ".odt", ".rtf", ".csv", ".md", ".html", ".xlsx", ".py", ".java", ".cpp", ".cs", ".m"]:
         assert ext in SUPPORTED_EXTENSIONS, f"{ext} deveria estar em SUPPORTED_EXTENSIONS"
