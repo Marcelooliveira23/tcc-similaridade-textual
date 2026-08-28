@@ -1,12 +1,14 @@
 import csv
 import json
+import logging
 import os
 from io import StringIO
 
 from flask import Blueprint, current_app, jsonify, make_response, render_template, request
 
-from src.api.file_extractor import extract_text, SUPPORTED_EXTENSIONS
+from src.api.file_extractor import SUPPORTED_EXTENSIONS, extract_text
 
+logger = logging.getLogger("tcc_similarity.api")
 api_bp = Blueprint("api", __name__)
 
 
@@ -29,6 +31,39 @@ def _decode_file_text(file_storage) -> str:
         return raw.decode("latin-1", errors="ignore")
 
 
+def _check_upload_limit(file_storage, label: str):
+    max_bytes = int(current_app.config.get("MAX_CONTENT_LENGTH", 2 * 1024 * 1024))
+    if not file_storage:
+        return None
+
+    try:
+        file_storage.stream.seek(0, os.SEEK_END)
+        size = file_storage.stream.tell()
+        file_storage.stream.seek(0)
+    except (AttributeError, OSError):
+        size = 0
+
+    if size > max_bytes:
+        logger.warning(
+            "upload_limit_exceeded %s",
+            json.dumps(
+                {
+                    "label": label,
+                    "file_name": getattr(file_storage, "filename", "unknown"),
+                    "size_bytes": size,
+                    "max_bytes": max_bytes,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+        )
+        return (
+            jsonify({"error": f"Arquivo {label} excede o limite máximo de {max_bytes / (1024 * 1024):.1f} MB."}),
+            413,
+        )
+    return None
+
+
 @api_bp.get("/")
 def index():
     return render_template("index.html")
@@ -48,12 +83,23 @@ def compare_texts():
 
     validation_error = _validate_texts(text_a, text_b)
     if validation_error:
+        logger.warning(
+            "comparison_validation_failed %s",
+            json.dumps({"route": "/compare", "text_a_length": len(text_a), "text_b_length": len(text_b)}, ensure_ascii=False),
+        )
         return validation_error
 
     service = current_app.config["comparison_service"]
-    result = service.compare_and_store(text_a, text_b)
-
-    return jsonify(result), 201
+    try:
+        result = service.compare_and_store(text_a, text_b)
+        logger.info(
+            "comparison_completed %s",
+            json.dumps({"route": "/compare", "scores": result}, ensure_ascii=False),
+        )
+        return jsonify(result), 201
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.exception("comparison_failed %s", json.dumps({"route": "/compare"}, ensure_ascii=False))
+        return jsonify({"error": f"Erro ao comparar textos: {exc}"}), 500
 
 
 @api_bp.post("/compare-files")
@@ -64,23 +110,44 @@ def compare_files():
     if not file_a or not file_b:
         return jsonify({"error": "file_a e file_b sao obrigatorios"}), 400
 
+    limit_error = _check_upload_limit(file_a, "A")
+    if limit_error:
+        return limit_error
+    limit_error = _check_upload_limit(file_b, "B")
+    if limit_error:
+        return limit_error
+
     text_a, err_a = extract_text(file_a)
     text_b, err_b = extract_text(file_b)
 
     if err_a:
+        logger.warning("file_extract_failed %s", json.dumps({"label": "A", "file_name": file_a.filename, "error": err_a}, ensure_ascii=False))
         return jsonify({"error": f"Arquivo A: {err_a}"}), 422
     if err_b:
+        logger.warning("file_extract_failed %s", json.dumps({"label": "B", "file_name": file_b.filename, "error": err_b}, ensure_ascii=False))
         return jsonify({"error": f"Arquivo B: {err_b}"}), 422
 
     validation_error = _validate_texts(text_a, text_b)
     if validation_error:
+        logger.warning(
+            "comparison_validation_failed %s",
+            json.dumps({"route": "/compare-files", "file_a": file_a.filename, "file_b": file_b.filename}, ensure_ascii=False),
+        )
         return validation_error
 
     service = current_app.config["comparison_service"]
-    result = service.compare_and_store(text_a, text_b)
-    result["file_a"] = file_a.filename
-    result["file_b"] = file_b.filename
-    return jsonify(result), 201
+    try:
+        result = service.compare_and_store(text_a, text_b)
+        result["file_a"] = file_a.filename
+        result["file_b"] = file_b.filename
+        logger.info(
+            "comparison_completed %s",
+            json.dumps({"route": "/compare-files", "file_a": file_a.filename, "file_b": file_b.filename, "scores": result}, ensure_ascii=False),
+        )
+        return jsonify(result), 201
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.exception("comparison_failed %s", json.dumps({"route": "/compare-files"}, ensure_ascii=False))
+        return jsonify({"error": f"Erro ao comparar arquivos: {exc}"}), 500
 
 
 @api_bp.get("/supported-formats")

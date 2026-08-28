@@ -83,6 +83,25 @@ def test_compare_files_success(client):
     assert "id" in body
 
 
+def test_app_uses_centralized_upload_limits():
+    app = create_app(database_path=":memory:", report_dir="reports")
+
+    assert app.config["MAX_CONTENT_LENGTH"] == 2 * 1024 * 1024
+    assert app.config["UPLOAD_MAX_BYTES"] == 2 * 1024 * 1024
+
+
+def test_compare_files_rejects_file_too_large(client):
+    oversized = b"A" * (2 * 1024 * 1024 + 1)
+    data = {
+        "file_a": (BytesIO(oversized), "a.txt"),
+        "file_b": (BytesIO(b"texto de teste B"), "b.txt"),
+    }
+    response = client.post("/compare-files", data=data, content_type="multipart/form-data")
+
+    assert response.status_code == 413
+    assert "arquivo" in response.get_json()["error"].lower()
+
+
 def test_evaluate_dataset_success(client):
     payload = {
         "algorithm": "jaccard",
@@ -120,3 +139,16 @@ def test_generate_algorithm_report_with_dataset_base(client):
     assert "ranking" in body["report"]
     assert "report_path" in body
     assert os.path.exists(body["report_path"])
+
+
+def test_benchmark_summary_uses_dataset_and_winner():
+    from scripts.benchmark_algorithms import run_benchmark
+
+    summary = run_benchmark("data/datasets/base_pairs.json", output_path="reports/test_benchmark_summary.json", max_pairs=5)
+
+    assert summary["samples"] == 5
+    assert summary["winner"] in {"tfidf_cosine", "jaccard", "levenshtein"}
+    assert os.path.exists("reports/test_benchmark_summary.json")
+
+    if os.path.exists("reports/test_benchmark_summary.json"):
+        os.remove("reports/test_benchmark_summary.json")
